@@ -1,0 +1,222 @@
+import React, { useState } from "react";
+import { createPermit } from "../api/permits";
+import PermitCard from "../components/PermitCard";
+import { useNavigate } from "react-router-dom";
+
+export default function CreatePermit() {
+  const [form, setForm] = useState({
+    fullName: "",
+    passportNumber: "",
+    nationality: "",
+    dateOfBirth: "",
+    employer: "",
+    jobTitle: "",
+    permitStartDate: "",
+    permitExpiryDate: "",
+    image: null,
+  });
+  const [loading, setLoading] = useState(false);
+  const [permit, setPermit] = useState(null);
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
+
+  const onChange = (e) => {
+    if (e.target.name === "image") {
+      setForm({ ...form, image: e.target.files[0] });
+    } else {
+      setForm({ ...form, [e.target.name]: e.target.value });
+    }
+  };
+
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!form.fullName || !form.passportNumber) {
+      setError("Full Name and Passport Number are required");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const data = new FormData();
+      Object.entries(form).forEach(([key, value]) => {
+        if (value) data.append(key, value);
+      });
+
+      const res = await createPermit(data);
+      setPermit(res.data.permit);
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to create permit");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-10 bg-gradient-to-b from-blue-50 to-white min-h-screen">
+      <h1 className="text-3xl font-extrabold text-[#0d3b66] mb-6">
+        Create New Work Permit Application
+      </h1>
+
+      {error && <p className="text-red-600 mb-4">{error}</p>}
+
+      <form
+        onSubmit={onSubmit}
+        className="bg-white p-8 rounded-2xl shadow-md space-y-5 border border-gray-100"
+      >
+        {/* Full Name */}
+        <div>
+          <label className="text-sm font-semibold text-gray-700">
+            Full Name *
+          </label>
+          <input
+            name="fullName"
+            value={form.fullName}
+            onChange={onChange}
+            required
+            className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+            placeholder="As in passport"
+          />
+        </div>
+
+        {/* Passport Number */}
+        <div>
+          <label className="text-sm font-semibold text-gray-700">
+            Passport Number *
+          </label>
+          <input
+            name="passportNumber"
+            value={form.passportNumber}
+            onChange={onChange}
+            required
+            className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+          />
+        </div>
+
+        {/* Optional Fields */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-semibold text-gray-700">
+              Nationality
+            </label>
+            <input
+              name="nationality"
+              value={form.nationality}
+              onChange={onChange}
+              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700">
+              Date of Birth
+            </label>
+            <input
+              name="dateOfBirth"
+              type="date"
+              value={form.dateOfBirth}
+              onChange={onChange}
+              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-semibold text-gray-700">
+              Employer
+            </label>
+            <input
+              name="employer"
+              value={form.employer}
+              onChange={onChange}
+              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700">
+              Job Title
+            </label>
+            <input
+              name="jobTitle"
+              value={form.jobTitle}
+              onChange={onChange}
+              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-semibold text-gray-700">
+              Permit Start Date
+            </label>
+            <input
+              name="permitStartDate"
+              type="date"
+              value={form.permitStartDate}
+              onChange={onChange}
+              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700">
+              Permit Expiry Date
+            </label>
+            <input
+              name="permitExpiryDate"
+              type="date"
+              value={form.permitExpiryDate}
+              onChange={onChange}
+              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {/* Image Upload */}
+        <div>
+          <label className="text-sm font-semibold text-gray-700">
+            Upload Image
+          </label>
+          <input
+            type="file"
+            name="image"
+            accept="image/*"
+            onChange={onChange}
+            className="mt-1 block w-full"
+          />
+        </div>
+
+        {/* Submit */}
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-[#d62828] text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-[#ba2020] transition-all disabled:opacity-60"
+          >
+            {loading ? "Submitting..." : "Submit Application"}
+          </button>
+        </div>
+      </form>
+
+      {/* Show Permit Result */}
+      {permit && (
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold text-[#0d3b66] mb-3">
+            Application Created
+          </h2>
+          <PermitCard permit={permit} />
+          <div className="mt-4">
+            <button
+              onClick={() =>
+                navigate(`/permit/${encodeURIComponent(permit.workPermitId)}`)
+              }
+              className="px-5 py-2 border border-gray-300 rounded-md hover:bg-gray-100"
+            >
+              View Permit
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
