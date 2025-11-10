@@ -1,24 +1,25 @@
+// client/src/api/permits.js
 import axios from "axios";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API_BASE = import.meta.env.VITE_API_URL || "/api"; // <-- ensure '/api' fallback
+const client = axios.create({ baseURL: API_BASE });
 
 export async function createPermit(payload) {
-  // If payload is FormData, DO NOT set Content-Type manually.
-  return axios.post(`${API_BASE}/permits`, payload);
+  return client.post("/permits", payload);
 }
 
 export async function listPermits({ q = "", page = 1, limit = 20 } = {}) {
-  return axios.get(`${API_BASE}/permits`, { params: { q, page, limit } });
+  return client.get("/permits", { params: { q, page, limit } });
 }
 
 export async function checkStatus(query) {
-  return axios.get(`${API_BASE}/permits/status`, { params: { query } });
+  return client.get("/permits/status", { params: { query } });
 }
 
 export async function getPermit(id) {
-  return axios.get(`${API_BASE}/permits/${encodeURIComponent(id)}`);
+  return client.get(`/permits/${encodeURIComponent(id)}`);
 }
 
 export async function deletePermit(id) {
-  return axios.delete(`${API_BASE}/permits/${encodeURIComponent(id)}`);
+  return client.delete(`/permits/${encodeURIComponent(id)}`);
 }
