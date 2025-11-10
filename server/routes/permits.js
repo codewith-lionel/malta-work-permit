@@ -1,33 +1,36 @@
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
-const path = require("path");
+const { body } = require("express-validator");
 
 const permitController = require("../controllers/permitController");
-const { body } = require("express-validator");
 const { handleValidation } = require("../middleware/validate");
 
-// Multer storage (store files under server/uploads)
-const storage = multer.diskStorage({
-  destination: (req, file, cb) =>
-    cb(null, path.join(__dirname, "..", "uploads")),
-  filename: (req, file, cb) => {
-    const safeName = `${Date.now()}-${file.originalname.replace(/\s+/g, "_")}`;
-    cb(null, safeName);
-  },
-});
-const upload = multer({ storage });
+// Use memory storage so we can send buffer to GridFS
+const storage = multer.memoryStorage();
 
-// Validation for create (JSON or form-data)
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const fileFilter = (req, file, cb) => {
+  if (!file.mimetype.startsWith("image/")) {
+    return cb(new Error("Only image files are allowed"), false);
+  }
+  cb(null, true);
+};
+
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: MAX_FILE_SIZE },
+});
+
+// Validation for create
 const createValidators = [
   body("fullName").notEmpty().withMessage("fullName is required"),
   body("passportNumber").notEmpty().withMessage("passportNumber is required"),
 ];
 
-// LIST /api/permits (optional: q, page, limit)
+// Routes
 router.get("/", permitController.listPermits);
-
-// POST create (accepts multipart/form-data with optional 'image' field)
 router.post(
   "/",
   upload.single("image"),
@@ -35,17 +38,9 @@ router.post(
   handleValidation,
   permitController.createPermit
 );
-
-// GET status search
 router.get("/status", permitController.getPermitByQuery);
-
-// GET by id
 router.get("/:id", permitController.getPermit);
-
-// PATCH update permit
 router.patch("/:id", permitController.updatePermit);
-
-// DELETE by id
 router.delete("/:id", permitController.deletePermit);
 
 module.exports = router;

@@ -25,12 +25,10 @@ export default function Header() {
             />
           </div>
           <div>
-            <div className="font-bold text-govRed text-lg">
+            <div className="font-bold p-4 text-govRed text-lg">
               Malta Work Permit
             </div>
-            <div className="text-xs text-gray-500">
-              Official Government Portal
-            </div>
+          
           </div>
         </Link>
 
@@ -45,15 +43,14 @@ export default function Header() {
           <Link to="/check" className={linkClasses("/check")}>
             Check Status
           </Link>
-          <Link to="/view" className={linkClasses("/check")}>
-            Veiw
+          <Link to="/view" className={linkClasses("/view")}>
+            View All
           </Link>
           <Link to="/delete" className={linkClasses("/delete")}>
             Delete Permit
-          </Link>{" "}
-          {/* ✅ new link */}
+          </Link>
           <Link to="/contact" className={linkClasses("/contact")}>
-            Contact
+            Contact Us
           </Link>
         </nav>
 
@@ -115,7 +112,7 @@ export default function Header() {
           <Link
             to="/view"
             onClick={() => setMenuOpen(false)}
-            className={`${linkClasses("/check")} block text-center py-2`}
+            className={`${linkClasses("/view")} block text-center py-2`}
           >
             View
           </Link>
@@ -125,8 +122,7 @@ export default function Header() {
             className={`${linkClasses("/delete")} block text-center py-2`}
           >
             Delete Permit
-          </Link>{" "}
-          {/* ✅ new link */}
+          </Link>
           <Link
             to="/contact"
             onClick={() => setMenuOpen(false)}

@@ -1,6 +1,65 @@
-const fs = require("fs");
+const { GridFSBucket, ObjectId } = require("mongodb");
 const path = require("path");
 const Permit = require("../models/Permit");
+const mongoose = require("mongoose");
+
+/**
+ * Helper: get GridFS bucket (lazy)
+ */
+function getGridFSBucket() {
+  if (!mongoose.connection?.db) {
+    throw new Error("Mongo connection not ready");
+  }
+  return new GridFSBucket(mongoose.connection.db, { bucketName: "uploads" });
+}
+
+/**
+ * Upload buffer to GridFS, return file id (as string)
+ */
+function uploadBufferToGridFS(buffer, originalName, mimetype) {
+  return new Promise((resolve, reject) => {
+    try {
+      const bucket = getGridFSBucket();
+      const safeName = `${Date.now()}-${originalName.replace(/\s+/g, "_")}`;
+      const uploadStream = bucket.openUploadStream(safeName, {
+        contentType: mimetype,
+      });
+
+      uploadStream.end(buffer);
+
+      uploadStream.on("finish", (file) => {
+        // file._id is the ObjectId
+        resolve(String(file._id));
+      });
+      uploadStream.on("error", (err) => reject(err));
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+/**
+ * Delete a GridFS file by id (string or ObjectId)
+ */
+function deleteGridFSFile(id) {
+  return new Promise((resolve, reject) => {
+    try {
+      const bucket = getGridFSBucket();
+      const _id = typeof id === "string" ? new ObjectId(id) : id;
+      bucket.delete(_id, (err) => {
+        if (err) {
+          // If file not found, just resolve
+          if (err.message && err.message.indexOf("FileNotFound") !== -1)
+            return resolve();
+          return reject(err);
+        }
+        resolve();
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
 
 /**
  * Generate unique Work Permit ID like WP-MTA-2025-123456
@@ -13,24 +72,20 @@ function generateWorkPermitID() {
 
 /**
  * POST /api/permits
- * Accepts JSON or multipart/form-data (field 'image' for file)
+ * Accepts multipart/form-data with optional 'image' file (in req.file.buffer)
  */
 exports.createPermit = async (req, res) => {
   try {
-    // Debug logs to help diagnose issues (safe to remove in production)
     console.log("--- createPermit called ---");
     console.log("content-type:", req.headers["content-type"]);
     console.log("req.body keys:", Object.keys(req.body || {}));
-    console.log("req.body:", req.body);
+    console.log("req.file present?", !!req.file);
     if (req.file) {
-      console.log("req.file:", {
+      console.log("req.file meta:", {
         originalname: req.file.originalname,
         mimetype: req.file.mimetype,
         size: req.file.size,
-        path: req.file.path,
       });
-    } else {
-      console.log("req.file: <no file>");
     }
 
     const {
@@ -76,16 +131,24 @@ exports.createPermit = async (req, res) => {
       status: "Pending",
     };
 
-    // If file uploaded, store relative URL like /uploads/filename
-    if (req.file && req.file.path) {
-      const rel = `/${path
-        .relative(path.join(__dirname, ".."), req.file.path)
-        .replace(/\\/g, "/")}`;
-      permitData.image = rel;
+    // If file uploaded, upload buffer to GridFS and store pointer
+    if (req.file && req.file.buffer) {
+      try {
+        const fileId = await uploadBufferToGridFS(
+          req.file.buffer,
+          req.file.originalname,
+          req.file.mimetype
+        );
+        // Save an API path pointer for this file: client will request /api/uploads/:id
+        permitData.image = `/api/uploads/${fileId}`; // store path pointing to our download endpoint
+        // Optionally, also store raw fileId: permitData.imageFileId = fileId;
+      } catch (uploadErr) {
+        console.error("Failed to upload to GridFS", uploadErr);
+        return res.status(500).json({ message: "Failed to upload image" });
+      }
     }
 
     const permit = await Permit.create(permitData);
-
     return res.status(201).json({ permit });
   } catch (err) {
     console.error("createPermit error", err);
@@ -99,8 +162,7 @@ exports.createPermit = async (req, res) => {
 };
 
 /**
- * GET /api/permits/status?query=
- * Lookup by workPermitId OR passportNumber
+ * GET /api/permits/status?query=...
  */
 exports.getPermitByQuery = async (req, res) => {
   try {
@@ -138,9 +200,7 @@ exports.getPermit = async (req, res) => {
 };
 
 /**
- * GET /api/permits
- * List permits with optional q search and pagination.
- * Query params: q (search), page (default 1), limit (default 20)
+ * LIST /api/permits
  */
 exports.listPermits = async (req, res) => {
   try {
@@ -181,7 +241,6 @@ exports.listPermits = async (req, res) => {
 
 /**
  * PATCH /api/permits/:id
- * Update a permit (whitelisted fields).
  */
 exports.updatePermit = async (req, res) => {
   try {
@@ -207,7 +266,6 @@ exports.updatePermit = async (req, res) => {
       }
     }
 
-    // convert dates if provided
     if (updates.dateOfBirth)
       updates.dateOfBirth = new Date(updates.dateOfBirth);
     if (updates.permitStartDate)
@@ -231,6 +289,7 @@ exports.updatePermit = async (req, res) => {
 
 /**
  * DELETE /api/permits/:id
+ * Removes permit and any GridFS file referenced in permit.image (if it is /api/uploads/:fileId)
  */
 exports.deletePermit = async (req, res) => {
   try {
@@ -240,35 +299,19 @@ exports.deletePermit = async (req, res) => {
     const deleted = await Permit.findOneAndDelete({ workPermitId: id }).lean();
     if (!deleted) return res.status(404).json({ message: "Permit not found" });
 
-    // Cleanup uploaded files if present
+    // Cleanup GridFS if image pointer indicates our /api/uploads/:id pattern
     try {
       if (deleted.image && typeof deleted.image === "string") {
-        const filePath = path.join(
-          __dirname,
-          "..",
-          deleted.image.replace(/^\//, "")
-        );
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-          console.log("Removed uploaded file:", filePath);
-        }
-      }
-      if (Array.isArray(deleted.documents)) {
-        deleted.documents.forEach((doc) => {
-          if (!doc) return;
-          const maybe = doc.url || doc.filename;
-          if (!maybe) return;
-          if (maybe.includes("/uploads/") || maybe.includes("uploads/")) {
-            const local = path.join(__dirname, "..", maybe.replace(/^\//, ""));
-            if (fs.existsSync(local)) {
-              try {
-                fs.unlinkSync(local);
-              } catch (e) {
-                console.warn(e.message);
-              }
-            }
+        const m = deleted.image.match(/\/api\/uploads\/([0-9a-fA-F]{24})$/);
+        if (m) {
+          const fileId = m[1];
+          try {
+            await deleteGridFSFile(fileId);
+            console.log("Deleted GridFS file", fileId);
+          } catch (e) {
+            console.warn("Failed to delete GridFS file", fileId, e.message);
           }
-        });
+        }
       }
     } catch (fileErr) {
       console.warn("Error cleaning up files for permit", id, fileErr.message);
