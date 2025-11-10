@@ -10,7 +10,7 @@ const connectDB = async () => {
   try {
     await mongoose.connect(uri, {
       dbName: process.env.MONGO_DBNAME || undefined,
-      autoIndex: false,
+      autoIndex: true,
       maxPoolSize: 50,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,

@@ -1,8 +1,9 @@
-const Permit = require("../models/Permit");
+const fs = require("fs");
 const path = require("path");
+const Permit = require("../models/Permit");
 
 /**
- * Generate a Work Permit ID like: WP-MTA-2025-<6digits>
+ * Generate unique Work Permit ID like WP-MTA-2025-123456
  */
 function generateWorkPermitID() {
   const year = new Date().getFullYear();
@@ -11,10 +12,27 @@ function generateWorkPermitID() {
 }
 
 /**
- * Create a new permit with optional image
+ * POST /api/permits
+ * Accepts JSON or multipart/form-data (field 'image' for file)
  */
 exports.createPermit = async (req, res) => {
   try {
+    // Debug logs to help diagnose issues (safe to remove in production)
+    console.log("--- createPermit called ---");
+    console.log("content-type:", req.headers["content-type"]);
+    console.log("req.body keys:", Object.keys(req.body || {}));
+    console.log("req.body:", req.body);
+    if (req.file) {
+      console.log("req.file:", {
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        path: req.file.path,
+      });
+    } else {
+      console.log("req.file: <no file>");
+    }
+
     const {
       fullName,
       passportNumber,
@@ -34,43 +52,39 @@ exports.createPermit = async (req, res) => {
 
     // Generate unique workPermitId
     let workPermitId;
-    let attempts = 0;
-    while (!workPermitId && attempts < 5) {
-      attempts++;
+    for (let attempts = 0; attempts < 6 && !workPermitId; attempts++) {
       const candidate = generateWorkPermitID();
+      // eslint-disable-next-line no-await-in-loop
       const exists = await Permit.findOne({ workPermitId: candidate }).lean();
       if (!exists) workPermitId = candidate;
     }
-
-    if (!workPermitId) {
+    if (!workPermitId)
       return res
         .status(500)
         .json({ message: "Failed to generate unique Work Permit ID" });
-    }
 
-    // Handle uploaded image
-    let imagePath = null;
-    if (req.file) {
-      imagePath = `/uploads/${req.file.filename}`;
-    }
-
-    const permit = new Permit({
+    const permitData = {
       workPermitId,
-      fullName,
-      passportNumber,
-      nationality,
-      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
-      employer,
-      jobTitle,
-      permitStartDate: permitStartDate ? new Date(permitStartDate) : undefined,
-      permitExpiryDate: permitExpiryDate
-        ? new Date(permitExpiryDate)
-        : undefined,
+      fullName: String(fullName).trim(),
+      passportNumber: String(passportNumber).trim(),
+      nationality: nationality ? String(nationality).trim() : null,
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+      employer: employer ? String(employer).trim() : null,
+      jobTitle: jobTitle ? String(jobTitle).trim() : null,
+      permitStartDate: permitStartDate ? new Date(permitStartDate) : null,
+      permitExpiryDate: permitExpiryDate ? new Date(permitExpiryDate) : null,
       status: "Pending",
-      image: imagePath,
-    });
+    };
 
-    await permit.save();
+    // If file uploaded, store relative URL like /uploads/filename
+    if (req.file && req.file.path) {
+      const rel = `/${path
+        .relative(path.join(__dirname, ".."), req.file.path)
+        .replace(/\\/g, "/")}`;
+      permitData.image = rel;
+    }
+
+    const permit = await Permit.create(permitData);
 
     return res.status(201).json({ permit });
   } catch (err) {
@@ -85,7 +99,8 @@ exports.createPermit = async (req, res) => {
 };
 
 /**
- * Get permit by Work Permit ID or Passport Number
+ * GET /api/permits/status?query=
+ * Lookup by workPermitId OR passportNumber
  */
 exports.getPermitByQuery = async (req, res) => {
   try {
@@ -98,7 +113,6 @@ exports.getPermitByQuery = async (req, res) => {
     }).lean();
 
     if (!permit) return res.status(404).json({ message: "Permit not found" });
-
     return res.json({ permit });
   } catch (err) {
     console.error("getPermitByQuery error", err);
@@ -107,7 +121,7 @@ exports.getPermitByQuery = async (req, res) => {
 };
 
 /**
- * Get permit by Work Permit ID
+ * GET /api/permits/:id
  */
 exports.getPermit = async (req, res) => {
   try {
@@ -116,7 +130,6 @@ exports.getPermit = async (req, res) => {
 
     const permit = await Permit.findOne({ workPermitId: id }).lean();
     if (!permit) return res.status(404).json({ message: "Permit not found" });
-
     return res.json({ permit });
   } catch (err) {
     console.error("getPermit error", err);
@@ -125,16 +138,146 @@ exports.getPermit = async (req, res) => {
 };
 
 /**
- * Delete permit by Work Permit ID
+ * GET /api/permits
+ * List permits with optional q search and pagination.
+ * Query params: q (search), page (default 1), limit (default 20)
+ */
+exports.listPermits = async (req, res) => {
+  try {
+    const q = (req.query.q || "").trim();
+    const page = Math.max(1, parseInt(req.query.page || "1", 10));
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(req.query.limit || "20", 10))
+    );
+    const skip = (page - 1) * limit;
+
+    const filter = {};
+    if (q) {
+      const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      filter.$or = [
+        { fullName: re },
+        { passportNumber: re },
+        { employer: re },
+        { jobTitle: re },
+      ];
+    }
+
+    const [total, permits] = await Promise.all([
+      Permit.countDocuments(filter),
+      Permit.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    return res.json({ data: permits, page, limit, total });
+  } catch (err) {
+    console.error("listPermits error", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * PATCH /api/permits/:id
+ * Update a permit (whitelisted fields).
+ */
+exports.updatePermit = async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!id) return res.status(400).json({ message: "id required" });
+
+    const allowed = [
+      "fullName",
+      "passportNumber",
+      "nationality",
+      "dateOfBirth",
+      "employer",
+      "jobTitle",
+      "permitStartDate",
+      "permitExpiryDate",
+      "status",
+    ];
+
+    const updates = {};
+    for (const key of allowed) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        updates[key] = req.body[key];
+      }
+    }
+
+    // convert dates if provided
+    if (updates.dateOfBirth)
+      updates.dateOfBirth = new Date(updates.dateOfBirth);
+    if (updates.permitStartDate)
+      updates.permitStartDate = new Date(updates.permitStartDate);
+    if (updates.permitExpiryDate)
+      updates.permitExpiryDate = new Date(updates.permitExpiryDate);
+
+    const updated = await Permit.findOneAndUpdate(
+      { workPermitId: id },
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).lean();
+    if (!updated) return res.status(404).json({ message: "Permit not found" });
+
+    return res.json({ permit: updated });
+  } catch (err) {
+    console.error("updatePermit error", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * DELETE /api/permits/:id
  */
 exports.deletePermit = async (req, res) => {
   try {
     const { id } = req.params;
-    const deleted = await Permit.findOneAndDelete({ workPermitId: id });
-    if (!deleted) {
-      return res.status(404).json({ message: "Permit not found" });
+    if (!id) return res.status(400).json({ message: "id required" });
+
+    const deleted = await Permit.findOneAndDelete({ workPermitId: id }).lean();
+    if (!deleted) return res.status(404).json({ message: "Permit not found" });
+
+    // Cleanup uploaded files if present
+    try {
+      if (deleted.image && typeof deleted.image === "string") {
+        const filePath = path.join(
+          __dirname,
+          "..",
+          deleted.image.replace(/^\//, "")
+        );
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log("Removed uploaded file:", filePath);
+        }
+      }
+      if (Array.isArray(deleted.documents)) {
+        deleted.documents.forEach((doc) => {
+          if (!doc) return;
+          const maybe = doc.url || doc.filename;
+          if (!maybe) return;
+          if (maybe.includes("/uploads/") || maybe.includes("uploads/")) {
+            const local = path.join(__dirname, "..", maybe.replace(/^\//, ""));
+            if (fs.existsSync(local)) {
+              try {
+                fs.unlinkSync(local);
+              } catch (e) {
+                console.warn(e.message);
+              }
+            }
+          }
+        });
+      }
+    } catch (fileErr) {
+      console.warn("Error cleaning up files for permit", id, fileErr.message);
     }
-    return res.json({ message: "Permit deleted successfully" });
+
+    return res.json({
+      message: "Permit deleted successfully",
+      permit: deleted,
+    });
   } catch (err) {
     console.error("deletePermit error", err);
     return res.status(500).json({ message: "Failed to delete permit" });

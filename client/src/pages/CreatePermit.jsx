@@ -13,19 +13,27 @@ export default function CreatePermit() {
     jobTitle: "",
     permitStartDate: "",
     permitExpiryDate: "",
-    image: null,
   });
+  const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [permit, setPermit] = useState(null);
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
   const onChange = (e) => {
-    if (e.target.name === "image") {
-      setForm({ ...form, image: e.target.files[0] });
-    } else {
-      setForm({ ...form, [e.target.name]: e.target.value });
-    }
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const onFileChange = (e) => {
+    setFile(e.target.files?.[0] || null);
+  };
+
+  const normalizeDate = (value) => {
+    if (!value) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const d = new Date(value);
+    if (isNaN(d)) return "";
+    return d.toISOString().slice(0, 10);
   };
 
   const onSubmit = async (e) => {
@@ -38,13 +46,50 @@ export default function CreatePermit() {
 
     setLoading(true);
     try {
-      const data = new FormData();
-      Object.entries(form).forEach(([key, value]) => {
-        if (value) data.append(key, value);
-      });
+      // If uploading image, use FormData; otherwise you can send JSON.
+      const hasFile = file instanceof File;
+      let payload;
 
-      const res = await createPermit(data);
+      if (hasFile) {
+        payload = new FormData();
+        // append text fields
+        const normalized = {
+          ...form,
+          dateOfBirth: normalizeDate(form.dateOfBirth),
+          permitStartDate: normalizeDate(form.permitStartDate),
+          permitExpiryDate: normalizeDate(form.permitExpiryDate),
+        };
+        Object.entries(normalized).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && v !== "") {
+            payload.append(k, v);
+          }
+        });
+        // append file (field name must be 'image' to match server)
+        payload.append("image", file);
+      } else {
+        // send JSON if no file
+        payload = {
+          ...form,
+          dateOfBirth: normalizeDate(form.dateOfBirth),
+          permitStartDate: normalizeDate(form.permitStartDate),
+          permitExpiryDate: normalizeDate(form.permitExpiryDate),
+        };
+      }
+
+      const res = await createPermit(payload);
       setPermit(res.data.permit);
+      // clear form
+      setForm({
+        fullName: "",
+        passportNumber: "",
+        nationality: "",
+        dateOfBirth: "",
+        employer: "",
+        jobTitle: "",
+        permitStartDate: "",
+        permitExpiryDate: "",
+      });
+      setFile(null);
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to create permit");
     } finally {
@@ -74,27 +119,25 @@ export default function CreatePermit() {
             value={form.fullName}
             onChange={onChange}
             required
-            className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+            className="mt-1 block w-full border border-gray-300 rounded-md p-2.5"
             placeholder="As in passport"
           />
         </div>
 
-        {/* Passport Number */}
-        <div>
-          <label className="text-sm font-semibold text-gray-700">
-            Passport Number *
-          </label>
-          <input
-            name="passportNumber"
-            value={form.passportNumber}
-            onChange={onChange}
-            required
-            className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
-          />
-        </div>
-
-        {/* Optional Fields */}
+        {/* Passport + Nationality */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-semibold text-gray-700">
+              Passport Number *
+            </label>
+            <input
+              name="passportNumber"
+              value={form.passportNumber}
+              onChange={onChange}
+              required
+              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5"
+            />
+          </div>
           <div>
             <label className="text-sm font-semibold text-gray-700">
               Nationality
@@ -103,9 +146,13 @@ export default function CreatePermit() {
               name="nationality"
               value={form.nationality}
               onChange={onChange}
-              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5"
             />
           </div>
+        </div>
+
+        {/* DOB + Job */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-sm font-semibold text-gray-700">
               Date of Birth
@@ -115,21 +162,7 @@ export default function CreatePermit() {
               type="date"
               value={form.dateOfBirth}
               onChange={onChange}
-              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-semibold text-gray-700">
-              Employer
-            </label>
-            <input
-              name="employer"
-              value={form.employer}
-              onChange={onChange}
-              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5"
             />
           </div>
           <div>
@@ -140,11 +173,25 @@ export default function CreatePermit() {
               name="jobTitle"
               value={form.jobTitle}
               onChange={onChange}
-              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5"
             />
           </div>
         </div>
 
+        {/* Employer */}
+        <div>
+          <label className="text-sm font-semibold text-gray-700">
+            Employer
+          </label>
+          <input
+            name="employer"
+            value={form.employer}
+            onChange={onChange}
+            className="mt-1 block w-full border border-gray-300 rounded-md p-2.5"
+          />
+        </div>
+
+        {/* Permit Dates */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-sm font-semibold text-gray-700">
@@ -155,7 +202,7 @@ export default function CreatePermit() {
               type="date"
               value={form.permitStartDate}
               onChange={onChange}
-              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5"
             />
           </div>
           <div>
@@ -167,7 +214,7 @@ export default function CreatePermit() {
               type="date"
               value={form.permitExpiryDate}
               onChange={onChange}
-              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-[#0d3b66] focus:outline-none"
+              className="mt-1 block w-full border border-gray-300 rounded-md p-2.5"
             />
           </div>
         </div>
@@ -181,7 +228,7 @@ export default function CreatePermit() {
             type="file"
             name="image"
             accept="image/*"
-            onChange={onChange}
+            onChange={onFileChange}
             className="mt-1 block w-full"
           />
         </div>
@@ -191,7 +238,7 @@ export default function CreatePermit() {
           <button
             type="submit"
             disabled={loading}
-            className="bg-[#d62828] text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-[#ba2020] transition-all disabled:opacity-60"
+            className="bg-[#d62828] text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-[#ba2020]"
           >
             {loading ? "Submitting..." : "Submit Application"}
           </button>

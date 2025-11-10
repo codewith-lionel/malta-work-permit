@@ -2,11 +2,9 @@ import axios from "axios";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-export async function createPermit(formData) {
-  // multipart/form-data for image upload
-  return axios.post(`${API_BASE}/permits`, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+export async function createPermit(payload) {
+  // If payload is FormData, DO NOT set Content-Type manually.
+  return axios.post(`${API_BASE}/permits`, payload);
 }
 
 export async function checkStatus(query) {
