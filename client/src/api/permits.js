@@ -7,6 +7,10 @@ export async function createPermit(payload) {
   return axios.post(`${API_BASE}/permits`, payload);
 }
 
+export async function listPermits({ q = "", page = 1, limit = 20 } = {}) {
+  return axios.get(`${API_BASE}/permits`, { params: { q, page, limit } });
+}
+
 export async function checkStatus(query) {
   return axios.get(`${API_BASE}/permits/status`, { params: { query } });
 }

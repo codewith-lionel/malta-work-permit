@@ -8,6 +8,7 @@ import CheckPermit from "./pages/CheckPermit";
 import PermitView from "./pages/PermitView";
 import DeletePermit from "./pages/DeletePermit"; // ✅ import new page
 import Contact from "./components/Contact";
+import PermitsList from "./pages/PermitList";
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/check" element={<CheckPermit />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/permit/:id" element={<PermitView />} />
+          <Route path="/view" element={<PermitsList />} />
 
           {/* ✅ New route for deleting permits */}
           <Route path="/delete" element={<DeletePermit />} />

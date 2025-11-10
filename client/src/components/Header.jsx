@@ -45,6 +45,9 @@ export default function Header() {
           <Link to="/check" className={linkClasses("/check")}>
             Check Status
           </Link>
+          <Link to="/view" className={linkClasses("/check")}>
+            Veiw
+          </Link>
           <Link to="/delete" className={linkClasses("/delete")}>
             Delete Permit
           </Link>{" "}
@@ -108,6 +111,13 @@ export default function Header() {
             className={`${linkClasses("/check")} block text-center py-2`}
           >
             Check Status
+          </Link>
+          <Link
+            to="/view"
+            onClick={() => setMenuOpen(false)}
+            className={`${linkClasses("/check")} block text-center py-2`}
+          >
+            View
           </Link>
           <Link
             to="/delete"
