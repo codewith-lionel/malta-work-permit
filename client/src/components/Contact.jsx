@@ -38,7 +38,8 @@ export default function Contact() {
     setSubmitting(true);
     try {
       const apiBase =
-        import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+        import.meta.env.VITE_API_URL ||
+        "https://malta-work-permit.onrender.com/api";
       // Try to POST to /contact — backend integration optional.
       const res = await fetch(`${apiBase}/contact`, {
         method: "POST",
@@ -221,8 +222,6 @@ export default function Contact() {
             </div>
           </aside>
         </div>
-
-       
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import axios from "axios";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API_BASE =
+  import.meta.env.VITE_API_URL || "https://malta-work-permit.onrender.com/api";
 
 export async function createPermit(payload) {
   // If payload is FormData, DO NOT set Content-Type manually.

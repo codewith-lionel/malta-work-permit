@@ -1,7 +1,7 @@
 import React from "react";
 
 const HOST = (
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api"
+  import.meta.env.VITE_API_URL || "https://malta-work-permit.onrender.com/api"
 ).replace(/\/api\/?$/, "");
 
 function fmtDate(value) {
